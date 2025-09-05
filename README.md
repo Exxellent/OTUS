@@ -45,7 +45,24 @@ ls -la
 
 ### 5. Проверка установленных файлов в /boot
 ```bash
-ls -la /boot
+$ ls -la /boot
+total 162788
+drwxr-xr-x  4 root root     4096 Sep  5 15:24 .
+drwxr-xr-x 19 root root     4096 Jul 14 10:24 ..
+-rw-r--r--  1 root root   237889 Apr 11 19:12 config-5.4.0-216-generic
+-rw-r--r--  1 root root   299505 Sep  4 16:05 config-6.16.5-061605-generic
+drwxr-xr-x  4 root root     4096 Sep  5 15:24 grub
+lrwxrwxrwx  1 root root       32 Sep  5 15:24 initrd.img -> initrd.img-6.16.5-061605-generic
+-rw-r--r--  1 root root 92972312 Jul 14 10:21 initrd.img-5.4.0-216-generic
+-rw-r--r--  1 root root 28490654 Sep  5 15:24 initrd.img-6.16.5-061605-generic
+lrwxrwxrwx  1 root root       28 Jul 14 09:55 initrd.img.old -> initrd.img-5.4.0-216-generic
+drwx------  2 root root    16384 Jul 14 09:54 lost+found
+-rw-------  1 root root  4767839 Apr 11 19:12 System.map-5.4.0-216-generic
+-rw-------  1 root root 10126845 Sep  4 16:05 System.map-6.16.5-061605-generic
+lrwxrwxrwx  1 root root       29 Sep  5 15:24 vmlinuz -> vmlinuz-6.16.5-061605-generic
+-rw-------  1 root root 13714184 Apr 11 19:21 vmlinuz-5.4.0-216-generic
+-rw-------  1 root root 16032256 Sep  4 16:05 vmlinuz-6.16.5-061605-generic
+lrwxrwxrwx  1 root root       25 Jul 14 09:55 vmlinuz.old -> vmlinuz-5.4.0-216-generic
 ```
 *Ожидаемый результат: появление новых файлов ядра версии 6.16.5 в директории /boot*
 
