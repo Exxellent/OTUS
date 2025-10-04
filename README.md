@@ -1,195 +1,175 @@
-# Домашнее задание: Практические навыки работы с ZFS
+# Домашнее задание: Работа с NFS
 
 ## Описание задач
 
 В данной лабораторной работе были выполнены следующие задачи:
 
-1. **Определить алгоритм с наилучшим сжатием:**
-   - Определить, какие алгоритмы сжатия поддерживает ZFS: `gzip`, `zle`, `lzjb`, `lz4`
-   - Создать 4 файловых системы, на каждой применить свой алгоритм сжатия
-   - Для сжатия использовать либо текстовый файл, либо группу файлов. Скопировать одинаковый файл в каждую файловую систему и сравнить степень сжатия с помощью команды
-
-2. **Определить настройки пула:**
-   - С помощью команды `zfs import` собрать пул ZFS
-   - Командой `zfs` определить настройки:
-     - Размер хранилища
-     - Тип пула
-     - Значение `recordsize`
-     - Какое сжатие используется
-     - Какая контрольная сумма используется
-
-3. **Работа со снапшотами:**
-   - Создать снапшот
-   - Скопировать файл из удалённой директории
-   - Восстановить файл локально
-   - Найти зашифрованное сообщение в файле `secret_message`
+1. Запустить 2 виртуальных машины (сервер NFS и клиента)
+2. На сервере NFS подготовить и экспортировать директорию
+3. В экспортированной директории создать поддиректорию `upload` с правами на запись
+4. Экспортированная директория должна автоматически монтироваться на клиенте при старте виртуальной машины (systemd, autofs или fstab)
+5. Монтирование и работа NFS на клиенте организована с использованием NFSv3
+6. Написаны bash-скрипты для конфигурации серверов
 
 ---
 
-## 1. Определение алгоритма с наилучшим сжатием
+## Решение
 
-### Создание 4 файловых систем с разными алгоритмами сжатия
+### 1. Установка и настройка NFS-сервера
 
-```bash
-zpool create first mirror /dev/sdb /dev/sdc
-zpool create second mirror /dev/sdd /dev/sde
-zpool create third mirror /dev/sdf /dev/sdg
-zpool create fourth mirror /dev/sdh /dev/sdi
-zpool list
-```
-
-**Результат:**
-```
-NAME     SIZE  ALLOC   FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
-first    480M   114K   480M        -         -     0%     0%  1.00x    ONLINE  -
-fourth   480M   140K   480M        -         -     0%     0%  1.00x    ONLINE  -
-second   480M   122K   480M        -         -     0%     0%  1.00x    ONLINE  -
-third    480M   116K   480M        -         -     0%     0%  1.00x    ONLINE  -
-```
-
-### Настройка алгоритмов сжатия
+**Установка необходимых пакетов:**
 
 ```bash
-zfs set compression=lzjb first
-zfs set compression=lz4 second
-zfs set compression=gzip-9 third
-zfs set compression=zle fourth
-zfs get all | grep compression
+apt install nfs-kernel-server
 ```
 
-**Результат:**
-```
-first   compression           lzjb                   local
-fourth  compression           zle                    local
-second  compression           lz4                    local
-third   compression           gzip-9                 local
-```
-
-### Создание тестового файла для проверки сжатия
+**Проверка открытия портов:**
 
 ```bash
-yes | head -c 40M > file
-
-for dir in first second third fourth; do
-    cp file /$dir/
-done
-
-for dir in first second third fourth; do
-    ls -lah /$dir
-done
+ss -tunl | grep -E "111|2049"
 ```
 
-**Результат:**
+Вывод:
 ```
-total 1.5M
-drwxr-xr-x  2 root root    3 Sep 29 18:38 .
-drwxr-xr-x 27 root root 4.0K Sep 29 18:15 ..
--rw-r--r--  1 root root  40M Sep 29 18:38 file
-
-total 330K
-drwxr-xr-x  2 root root    3 Sep 29 18:38 .
-drwxr-xr-x 27 root root 4.0K Sep 29 18:15 ..
--rw-r--r--  1 root root  40M Sep 29 18:38 file
-
-total 170K
-drwxr-xr-x  2 root root    3 Sep 29 18:38 .
-drwxr-xr-x 27 root root 4.0K Sep 29 18:15 ..
--rw-r--r--  1 root root  40M Sep 29 18:38 file
-
-total 41M
-drwxr-xr-x  2 root root    3 Sep 29 18:38 .
-drwxr-xr-x 27 root root 4.0K Sep 29 18:15 ..
--rw-r--r--  1 root root  40M Sep 29 18:38 file
+udp   UNCONN 0      0                   0.0.0.0:111        0.0.0.0:*          
+udp   UNCONN 0      0                      [::]:111           [::]:*          
+tcp   LISTEN 0      4096                0.0.0.0:111        0.0.0.0:*          
+tcp   LISTEN 0      64                  0.0.0.0:2049       0.0.0.0:*          
+tcp   LISTEN 0      4096                   [::]:111           [::]:*          
+tcp   LISTEN 0      64                     [::]:2049          [::]:*
 ```
 
-### Проверка использования дискового пространства
+**Создание директории для экспорта:**
 
 ```bash
-zfs list
+mkdir -p /srv/share/upload 
+chown -R nobody:nogroup /srv/share 
+chmod 0777 /srv/share/upload
 ```
 
-**Результат:**
-```
-NAME     USED  AVAIL  REFER  MOUNTPOINT
-first   1.61M   350M  1.43M  /first
-fourth  40.2M   312M  40.0M  /fourth
-second   542K   351M   350K  /second
-third    378K   352M   190K  /third
-```
-
-### Анализ коэффициентов сжатия
+**Настройка экспорта в `/etc/exports`:**
 
 ```bash
-zfs get all | grep compressratio | grep -v ref
+cat /etc/exports
 ```
 
-**Результат:**
+Содержимое:
 ```
-first   compressratio         27.10x                 -
-fourth  compressratio         1.00x                  -
-second  compressratio         102.85x                -
-third   compressratio         172.78x                -
+/srv/share 192.168.1.201/32(rw,sync,root_squash)
 ```
 
-### Вывод
+**Проверка экспортов:**
 
-**Лучший результат показал алгоритм `gzip-9` с коэффициентом сжатия 172x**
+```bash
+exportfs -s
+```
+
+Вывод:
+```
+/srv/share  192.168.1.201/32(sync,wdelay,hide,no_subtree_check,sec=sys,rw,secure,root_squash,no_all_squash)
+```
+
+
+### 2. Настройка NFS-клиента
+
+**Установка необходимых пакетов:**
+
+```bash
+apt install nfs-common
+```
+
+**Добавление записи в `/etc/fstab` для автоматического монтирования:**
+
+```bash
+192.168.1.200:/srv/share/ /mnt nfs vers=3,noauto,x-systemd.automount 0 0
+```
+
+**Применение изменений:**
+
+```bash
+systemctl daemon-reload 
+systemctl restart remote-fs.target
+```
+
+**Проверка монтирования:**
+
+```bash
+mount | grep mnt
+```
+
+Вывод:
+```
+systemd-1 on /mnt type autofs (rw,relatime,fd=64,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=5027)
+192.168.1.200:/srv/share/ on /mnt type nfs (rw,relatime,vers=3,rsize=524288,wsize=524288,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,mountaddr=192.168.1.200,mountvers=3,mountport=59989,mountproto=udp,local_lock=none,addr=192.168.1.200)
+```
+
+Проверка дискового пространства:
+```bash
+df -h
+```
+
+Вывод:
+```
+Filesystem                 Size  Used Avail Use% Mounted on
+tmpfs                      319M  1.2M  318M   1% /run
+/dev/sda2                   25G  7.2G   17G  31% /
+192.168.1.200:/srv/share/   25G  7.2G   17G  31% /mnt
+```
+
+### 3. Проверка работоспособности
+
+**Тестирование создания файлов:**
+
+1. На сервере создаём тестовый файл:
+   ```bash
+   touch /srv/share/upload/check
+   ```
+
+2. На клиенте проверяем доступность и создаём файл:
+   ```bash
+   cd /mnt/upload
+   ls -la  # Проверяем наличие check
+   touch client
+   ```
+
+**Проверка сохранности после перезагрузки:**
+
+1. **Тест клиента:**
+   - Перезагружаем клиент
+   - Проверяем наличие файлов в `/mnt/upload`
+
+2. **Тест сервера:**
+   - Перезагружаем сервер
+   - Проверяем наличие файлов в `/srv/share/upload/`
+   - Проверяем экспорты: `exportfs -s`
+
+3. **Финальная проверка:**
+   - Перезагружаем клиент
+   - Проверяем монтирование: `mount | grep mnt`
+   - Создаём финальный тестовый файл: `touch /mnt/upload/final`
+
+**Результат проверки прав доступа:**
+
+```bash
+root@otus-2:/mnt/upload# ls -la
+```
+
+Вывод:
+```
+total 8
+drwxrwxrwx 2 nobody nogroup 4096 Oct  4 13:13 .
+drwxr-xr-x 3 nobody nogroup 4096 Oct  4 12:47 ..
+-rw-r--r-- 1 nobody nogroup    0 Oct  4 13:03 client
+-rw-r--r-- 1 root   root       0 Oct  4 13:13 final
+-rw-r--r-- 1 root   root       0 Oct  4 12:51 test
+```
 
 ---
 
-## 2. Определение настроек пула
-
-### Размер хранилища
-
-```bash
-zpool get size otus
-```
-
-**Результат:**
-```
-NAME  PROPERTY  VALUE  SOURCE
-otus  size      480M   -
-```
-
-### Тип пула, recordsize, сжатие и контрольная сумма
-
-```bash
-zfs get type,recordsize,compression,checksum otus
-```
-
-**Результат:**
-```
-NAME  PROPERTY     VALUE           SOURCE
-otus  type         filesystem      -
-otus  recordsize   128K            local
-otus  compression  zle             local
-otus  checksum     sha256          local
-```
 
 
-## 3. Работа со снапшотами
 
-### Скачивание файла
+## Баш скрипты
 
-```bash
-wget -O otus_task2.file --no-check-certificate "https://drive.usercontent.google.com/download?id=1wgxjih8YZ-cqLqaZVa0lA3h3Y029c3oI&export=download"
-```
-
-### Восстановление файла локально
-
-```bash
-zfs receive otus/test@now < otus_task2.file
-```
-
-### Поиск секретного послания
-
-```bash
-find /otus/test -name "secret_message"
-```
-
-**Результат:**
-```
-/otus/test/task1/file_mess/secret_message
-```
-
----
+- [config_server.sh](config_server.sh) - скрипт автоматической настройки NFS-сервера с созданием директорий, настройкой прав доступа и экспортов.
+- [config_client.sh](config_client.sh) - скрипт автоматической настройки NFS-клиента с монтированием экспортированной директории.
