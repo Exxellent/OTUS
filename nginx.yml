@@ -1,0 +1,149 @@
+- name: Установка и настройка Nginx с несколькими экземплярами
+  hosts: all
+  become: yes
+  tags:
+    - nginx
+
+  tasks:
+    - name: Установка Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Остановка стандартного сервиса Nginx
+      systemd:
+        name: nginx
+        state: stopped
+        enabled: no
+
+    - name: Создание systemd unit template для nginx@.service
+      copy:
+        content: |
+          [Unit]
+          Description=A high performance web server and a reverse proxy server
+          Documentation=man:nginx(8)
+          After=network.target nss-lookup.target
+
+          [Service]
+          Type=forking
+          PIDFile=/run/nginx-%I.pid
+          ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx-%I.conf -q -g 'daemon on; master_process on;'
+          ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;'
+          ExecReload=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;' -s reload
+          ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /run/nginx-%I.pid
+          TimeoutStopSec=5
+          KillMode=mixed
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/nginx@.service
+        mode: '0644'
+
+    - name: Создание конфигурации nginx-first.conf
+      copy:
+        content: |
+          user www-data;
+          worker_processes auto;
+          pid /run/nginx-first.pid;
+          include /etc/nginx/modules-enabled/*.conf;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+
+              sendfile        on;
+              tcp_nopush      on;
+              tcp_nodelay     on;
+              keepalive_timeout  65;
+              types_hash_max_size 2048;
+
+              include /etc/nginx/conf.d/*.conf;
+
+              server {
+                  listen 9001;
+                  server_name localhost;
+
+                  location / {
+                      root /var/www/html;
+                      index index.html index.htm;
+                  }
+              }
+          }
+        dest: /etc/nginx/nginx-first.conf
+        mode: '0644'
+
+    - name: Создание конфигурации nginx-second.conf
+      copy:
+        content: |
+          user www-data;
+          worker_processes auto;
+          pid /run/nginx-second.pid;
+          include /etc/nginx/modules-enabled/*.conf;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+
+              sendfile        on;
+              tcp_nopush      on;
+              tcp_nodelay     on;
+              keepalive_timeout  65;
+              types_hash_max_size 2048;
+
+              include /etc/nginx/conf.d/*.conf;
+
+              server {
+                  listen 9002;
+                  server_name localhost;
+
+                  location / {
+                      root /var/www/html;
+                      index index.html index.htm;
+                  }
+              }
+          }
+        dest: /etc/nginx/nginx-second.conf
+        mode: '0644'
+
+    - name: Перезагрузка systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Запуск nginx@first
+      systemd:
+        name: nginx@first
+        enabled: yes
+        state: started
+
+    - name: Запуск nginx@second
+      systemd:
+        name: nginx@second
+        enabled: yes
+        state: started
+
+    - name: Проверка статуса nginx@first
+      systemd:
+        name: nginx@first
+      register: nginx_first_status
+
+    - name: Проверка статуса nginx@second
+      systemd:
+        name: nginx@second
+      register: nginx_second_status
+
+    - name: Вывод статуса nginx@first
+      debug:
+        msg: "nginx@first status: {{ nginx_first_status.status.ActiveState }}"
+
+    - name: Вывод статуса nginx@second
+      debug:
+        msg: "nginx@second status: {{ nginx_second_status.status.ActiveState }}"

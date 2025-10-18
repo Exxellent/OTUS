@@ -1,0 +1,62 @@
+- name: Установка spawn-fcgi и переделка init скрипта
+  hosts: all
+  become: yes
+  tags:
+    -  spawn-fcgi
+
+  tasks:
+    - name: Установка spawn-fcgi и необходимых пакетов
+      apt:
+        name:
+          - spawn-fcgi
+          - php
+          - php-cgi
+          - php-cli
+          - apache2
+          - libapache2-mod-fcgid
+        state: present
+        update_cache: yes
+    - name: Создание директории конфигурационного файла spawn-fcgi
+      file:
+        path: /etc/spawn-fcgi
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Настройка конфигурационного файла spawn-fcgi
+      copy:
+        content: |
+          SOCKET=/var/run/php-fcgi.sock
+          OPTIONS="-u www-data -g www-data -s $SOCKET -S -M 0600 -C 32 -F 1 -- /usr/bin/php-cgi"
+        dest: /etc/spawn-fcgi/fcgi.conf
+        mode: '0644'
+
+    - name: Создание systemd service файла
+      copy:
+        content: |
+          [Unit]
+          Description=Spawn-fcgi startup service by Otus
+          After=network.target
+
+          [Service]
+          Type=simple
+          PIDFile=/var/run/spawn-fcgi.pid
+          EnvironmentFile=/etc/spawn-fcgi/fcgi.conf
+          ExecStart=/usr/bin/spawn-fcgi -n $OPTIONS
+          KillMode=process
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/spawn-fcgi.service
+        mode: '0644'
+
+    - name: Перезагрузка systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Запуск spawn-fcgi
+      systemd:
+        name: spawn-fcgi.service
+        enabled: yes
+        state: started
