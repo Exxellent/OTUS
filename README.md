@@ -1,119 +1,79 @@
-# Домашнее задание: Сборка RPM-пакета и создание репозитория
+# Домашнее задание: Работа с загрузчиком
 
 ## Описание задач
 
 В данной лабораторной работе были поставлены следующие задачи:
 
-1. Создать свой RPM пакет (можно взять свое приложение, либо собрать, например, Apache с определенными опциями)
-2. Создать свой репозиторий и разместить там ранее собранный RPM
+1. Включить отображение меню Grub.
+2. Попасть в систему без пароля несколькими способами.
+3. Установить систему с LVM, после чего переименовать VG.
 
 ---
 
-## Примечание
-
-Так как под рукой отсутствовал дистрибутив с пакетным менеджером RPM, сборка пакета была выполнена на Ubuntu 22.04
 
 
 ## Решение
 
-### 1. Сборка своего RPM пакета
+### 1. Включение отображение меню Grub.
 
-1. Установим инструменты для сборки RPM:
-
-```bash
-sudo apt update
-sudo apt install rpm createrepo-c
-```
-
-2. Создадим структуру каталогов для rpmbuild:
-```bash
-mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-```
-
-3. Создадим простой скрипт, который будет выводить "Hello otus!":
-```bash
-mkdir ~/hello-rpm
-echo -e '#!/bin/bash\necho "Hello otus!"' > ~/hello-rpm/hello.sh
-chmod +x ~/hello-rpm/hello.sh
-tar czvf ~/rpmbuild/SOURCES/hello-rpm.tar.gz -C ~/ hello-rpm
-```
-
-4. Создадим спецификацию для RPM пакета:
-
-```spec
-Name:           hello-rpm
-Version:        1.0
-Release:        1%{?dist}
-Summary:        Hello otus! 
-
-License:        MIT
-Source0:        hello-rpm.tar.gz
-BuildArch:      noarch
-
-%description
-Просто тестовый скрипт для сборки RPM
-
-%prep
-%setup -q -n hello-rpm
-
-%build
-
-%install
-mkdir -p %{buildroot}/usr/local/bin
-cp hello.sh %{buildroot}/usr/local/bin/hello-rpm
-
-%files
-/usr/local/bin/hello-rpm
-
-%changelog
-* Sun Oct 12 2025 Renat - 1.0-1
-- Initial RPM
-```
-
-5. Сборка пакета:
+1. Меняем параметры граба в настройках /etc/default/grub
 
 ```bash
-rpmbuild -ba ~/rpmbuild/SPECS/hello-rpm.spec
+# If you change this file, run 'update-grub' afterwards to update                                         
+# /boot/grub/grub.cfg.
+# For full documentation of the options in this file, see:
+#   info -f grub -n 'Simple configuration'
+
+GRUB_DEFAULT=0
+#GRUB_TIMEOUT_STYLE=hidden
+GRUB_TIMEOUT=10
+GRUB_DISTRIBUTOR=`( . /etc/os-release; echo ${NAME:-Ubuntu} ) 2>/dev/null || echo Ubuntu`
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX=""
 ```
 
-6. Тест пакета на Ubuntu:
+2. Применяем изменения
 ```bash
-root@otus-2:~/rpmbuild/SPECS# sudo alien -i /root/rpmbuild/RPMS/noarch/hello-rpm-1.0-1.noarch.rpm
-root@otus-2:~/rpmbuild/SPECS# hello-rpm 
-Hello otus!
+update-grub
 ```
 
 
-### 2. Создание своего репозитория
 
-1. Создание директории для репозитория:
-```bash
-mkdir -p ~/myrepo
-cp ~/rpmbuild/RPMS/noarch/*.rpm ~/myrepo/
-createrepo_c ~/myrepo
-```
+3. Перезагружаем и попадаем в меню GRUB:
 
-2. Копирование репозитория в каталог nginx:
-```bash
-sudo cp -r ~/myrepo/* /var/www/html/myrepo/
-sudo systemctl restart nginx
-```
-
-3. Проверка доступности репозитория:
-```bash
-root@otus-2:~/myrepo/repodata# curl http://localhost/myrepo/
-<html>
-<head><title>Index of /myrepo/</title></head>
-<body>
-<h1>Index of /myrepo/</h1><hr><pre><a href="../">../</a>
-<a href="repodata/">repodata/</a>                                          12-Oct-2025 16:23       -
-<a href="hello-rpm-1.0-1.noarch.rpm">hello-rpm-1.0-1.noarch.rpm</a>                         12-Oct-2025 16:25    6413
-</pre><hr></body>
-</html>
-```
-
-4. Тест с браузера:
 ![Фото](img/image.png)
 
-## Результат
-Пакет успешно собирается, устанавливается и работает корректно, выводя сообщение "Hello otus!" при запуске команды `hello-rpm`.
+
+### 2. Попадаем в систему без пароля несколькими способами.
+
+
+1. Способ через init=/bin/bash
+
+Дописав в режиме запуска init=/bin/bash мы попадаем в ОС без пароля но в RO режиме
+
+![Фото](img/image2.png)
+
+Перемонтируя ФС через 
+
+```bash 
+mount -o remount,rw /
+```
+
+Мы можем взаимодействовать с файлами в write режиме (создал файл, показал его)
+
+![Фото](img/image3.png)
+
+
+2. Recovery mode
+
+В этом меню сначала включаем поддержку сети для того, чтобы файловая система перемонтировалась в режим read/write.
+Далее выбираем пункт root и попадаем в консоль с пользователем root.
+
+
+![Фото](img/image4.png)
+
+
+
+### 3. Переименование VG
+
+![Фото](img/image5.png)
