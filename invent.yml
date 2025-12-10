@@ -2,9 +2,10 @@ all:
   hosts:
     otus:
       ansible_connection: ssh
-      ansible_user: user
-      ansible_ssh_private_key_file: ~/.ssh/id_rsa
+      ansible_user: renat
       ansible_become: true
+      ansible_password: 123
       ansible_become_password: 123
       ansible_port: 22
-      ansible_host: 192.168.1.111
+      ansible_host: 192.168.249.70
+      ansible_python_interpreter: /usr/bin/python3.10
