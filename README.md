@@ -1,205 +1,113 @@
-# Домашнее задание: Docker
+# Домашнее задание: Мониторинг с Prometheus и Grafana
 
-## Описание задач
+## Описание задачи
 
-В данной лабораторной работе были поставлены следующие задачи:
+Настроить систему мониторинга с использованием Prometheus и Grafana, включающую дашборд с 4 графиками:
+- Память (RAM)
+- Процессор (CPU)
+- Диск (Disk)
+- Сеть (Network)
 
-1. Установить Docker на хост машину
-2. Установить Docker Compose (как плагин или отдельное приложение)
-3. Создать кастомный образ nginx на базе alpine с кастомной страницей
-4. Определить разницу между контейнером и образом
-5. Ответить на вопрос: Можно ли в контейнере собрать ядро?
+## Архитектура решения
 
----
+Система мониторинга состоит из следующих компонентов:
 
-## 1. Установка Docker
+1. **Prometheus** — система сбора и хранения метрик
+2. **Node Exporter** — экспортер системных метрик хоста
+3. **Grafana** — платформа для визуализации метрик
 
-### Установка Docker Engine на Ubuntu
 
-```bash
-# Обновление пакетов
-sudo apt update
-sudo apt install ca-certificates curl
-
-# Создание директории для ключей
-sudo install -m 0755 -d /etc/apt/keyrings
-
-# Добавление официального GPG ключа Docker
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-# Добавление репозитория Docker
-sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-# Установка Docker
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-
-### Проверка установки
-
-```bash
-sudo docker --version
-sudo docker run hello-world
-```
-
----
-
-## 2. Создание кастомного образа Nginx на базе Alpine
-
-### Структура проекта
+## Структура проекта
 
 ```
 OTUS/
-├── Dockerfile              # Описание образа
-├── nginx.conf             # Конфигурация nginx
-├── index.html             # Кастомная HTML страница
-├── docker-compose.yml     # Конфигурация для docker-compose
-└── README.md              # Документация
+├── monitoring/
+│   ├── docker-compose.yml          # Конфигурация всех сервисов
+│   ├── configuration/
+│   │   └── prometheus.yml          # Конфигурация Prometheus
+│   ├── data/                       # Данные Prometheus
+│   └── grafana/                    # Данные Grafana
+└── README.md
 ```
 
-### Dockerfile
+## Установка и настройка
 
-```dockerfile
-FROM alpine:latest
+### Предварительные требования
 
-RUN apk add --no-cache nginx
+- Docker и Docker Compose установлены на хосте
+- Доступ к портам: 9090 (Prometheus), 9100 (Node Exporter), 3000 (Grafana)
 
-RUN mkdir -p /var/www/html /var/log/nginx /run/nginx
-
-COPY nginx.conf /etc/nginx/nginx.conf
-
-COPY index.html /var/www/html/index.html
-
-RUN chown -R nginx:nginx /var/www/html /var/log/nginx /run/nginx && \
-    nginx -t
-
-EXPOSE 8080
-
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-### Конфигурация nginx (nginx.conf)
-
-Nginx настроен на прослушивание порта 8080 и отдачу кастомной страницы из `/var/www/html/index.html`.
-
-### Сборка образа
+### Шаг 1: Создание структуры директорий
 
 ```bash
-docker build -t exxellent/otus .
+mkdir -p monitoring/configuration
+mkdir -p monitoring/data
+mkdir -p monitoring/grafana
+
+cd monitoring
 ```
 
-### Запуск контейнера
+### Шаг 2: Создание docker-compose.yml
 
-**Вариант 1: Через docker run**
-```bash
-docker run -d -p 8080:8080 --name otus exxellent/otus
-```
+Создан файл `monitoring/docker-compose.yml` со следующими сервисами:
 
-**Вариант 2: Через docker-compose**
-```bash
-docker compose up -d
-```
+- **prometheus**: сервер сбора метрик
+- **node-exporter**: экспортер системных метрик
+- **grafana**: веб-интерфейс для визуализации
 
-### Проверка работы
+### Шаг 3: Создание конфигурации Prometheus
 
-Откройте в браузере: `http://localhost:8080`
+Создан файл `monitoring/configuration/prometheus.yml` с настройкой сбора метрик от Node Exporter.
 
-Вы должны увидеть кастомную страницу с текстом "HELLO OTUS".
-
-### Остановка контейнера
+### Шаг 4: Настройка прав доступа
 
 ```bash
-# Если запускали через docker run
-docker stop otus
-docker rm otus
-
-# Если запускали через docker-compose
-docker compose down
+chown -R 65534:65534 monitoring/data
 ```
 
----
+### Шаг 5: Запуск сервисов
 
-## 3. Разница между контейнером и образом
-
-### Образ (Image)
-
-**Образ** — это неизменяемый шаблон, используемый для создания контейнеров. Образ содержит:
-- Файловую систему (layers)
-- Метаданные (конфигурация, переменные окружения)
-- Инструкции для запуска приложения
-
-### Контейнер (Container)
-
-**Контейнер** — это запущенный экземпляр образа. Контейнер:
-- Создается из образа
-- Имеет свой собственный изолированный процесс
-- Имеет изменяемый слой (writable layer) поверх образа
-- Изолирован от других контейнеров и хоста
-
----
-
-## 5. Можно ли в контейнере собрать ядро?
-
-**Технически возможно, но практически нецелесообразно и имеет серьезные ограничения.**
-
-### Подробное объяснение
-
-#### Технические возможности
-
-1. **Доступ к инструментам компиляции:**
-   - В контейнере можно установить компиляторы (gcc, make, build-essential)
-   - Можно установить необходимые библиотеки и заголовочные файлы
-   - Можно скачать исходный код ядра Linux
-
-2. **Процесс сборки:**
-   ```bash
-   # Технически можно выполнить
-   docker run -it ubuntu:latest bash
-   apt update && apt install -y build-essential linux-source
-   # ... компиляция ядра
-   ```
-
-#### Ограничения и проблемы
-
-1. **Изоляция контейнера:**
-   - Контейнер использует ядро хоста, а не свое собственное
-   - Собранное ядро в контейнере не может быть загружено из контейнера
-   - Для загрузки ядра нужен доступ к загрузчику (GRUB), который недоступен из контейнера
-
-2. **Права доступа:**
-   - Сборка ядра требует привилегированного доступа
-   - Нужны специальные флаги (`--privileged`) для доступа к устройствам
-   - Это нарушает принципы безопасности контейнеризации
-
-3. **Практическая бесполезность:**
-   - Собранное ядро не может быть использовано контейнером
-   - Ядро должно быть загружено на уровне хоста
-   - Контейнер всегда использует ядро хостовой системы
-
-4. **Ресурсы:**
-   - Сборка ядра требует значительных ресурсов (CPU, память, диск)
-   - Контейнеры предназначены для легковесных приложений
-   - Это противоречит философии контейнеризации
-
-
----
-
-## Заключение
-
-В ходе выполнения домашнего задания были изучены основы работы с Docker:
-- Установка Docker Engine и Docker Compose
-- Создание кастомного образа на базе Alpine
-- Понимание разницы между образом и контейнером
-- Собран образ и запушен в репо
+```bash
+cd monitoring
+docker-compose up -d
 ```
-docker pull exxellent/otus:latest
-```
-https://hub.docker.com/r/exxellent/otus/tags
 
+### Шаг 6: Проверка работы сервисов
+
+После запуска доступны следующие интерфейсы:
+
+- **Prometheus**: http://192.168.249.70:9090
+- **Node Exporter**: http://192.168.249.70:9100/metrics
+- **Grafana**: http://192.168.249.70:3000
+  - Логин по умолчанию: `admin`
+  - Пароль по умолчанию: `admin`
+
+## Настройка Grafana
+
+### Импорт дашборда Node Exporter
+
+1. Перейти в **Dashboards** → **Import**
+2. Ввести ID дашборда: **1860** (Node Exporter)
+3. Выбрать источник данных **Prometheus**
+4. Нажмите **Import**
+
+![alt text](image.png)
+
+## Конфигурационные файлы
+
+### docker-compose.yml
+
+Основные параметры конфигурации:
+
+- **Prometheus**: порт 9090, том с конфигурацией и данными
+- **Node Exporter**: порт 9100, монтирование `/proc`, `/sys`, `/` для сбора метрик
+- **Grafana**: порт 3000, том для хранения дашбордов и настроек
+- Все сервисы в одной Docker сети для взаимодействия
+
+### prometheus.yml
+
+Конфигурация включает:
+
+- **scrape_interval**: 5 секунд (частота сбора метрик)
+- **job_name**: node (название задачи сбора)
+- **targets**: node-exporter:9100 (адрес Node Exporter в Docker сети)
